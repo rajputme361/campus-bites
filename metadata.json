@@ -1,0 +1,6 @@
+{
+  "name": "Campus Bites",
+  "description": "College Canteen Pre-Order System for Block 2 Canteen and Apple & Bees Canteen.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
