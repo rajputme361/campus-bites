@@ -24,15 +24,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-const DATA_DIR = path.resolve(__dirname, 'data');
+const isVercel = Boolean(process.env.VERCEL);
+const DATA_DIR = isVercel ? path.resolve('/tmp', 'data') : path.resolve(__dirname, 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'campus-bites-db.json');
-const UPLOADS_DIR = path.resolve(__dirname, 'uploads');
+const UPLOADS_DIR = isVercel ? path.resolve('/tmp', 'uploads') : path.resolve(__dirname, 'uploads');
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+} catch {
+  // Read-only filesystem in serverless environments
 }
 
 interface StoredUser extends UserProfile {
@@ -394,9 +399,13 @@ function loadDatabase(): DatabaseSchema {
 }
 
 function saveDatabase(db: DatabaseSchema): void {
-  const tempFile = `${DB_FILE}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-  fs.writeFileSync(tempFile, JSON.stringify(db, null, 2), 'utf-8');
-  fs.renameSync(tempFile, DB_FILE);
+  try {
+    const tempFile = `${DB_FILE}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+    fs.writeFileSync(tempFile, JSON.stringify(db, null, 2), 'utf-8');
+    fs.renameSync(tempFile, DB_FILE);
+  } catch (err) {
+    console.warn('Could not persist to local DB file (serverless mode):', err);
+  }
 }
 
 let db = loadDatabase();
@@ -560,9 +569,8 @@ function sanitizeImageUrl(url: unknown): string | null {
   return null;
 }
 
-async function startServer() {
-  const app = express();
-  app.use(express.json({ limit: '4mb' }));
+const app = express();
+app.use(express.json({ limit: '4mb' }));
 
   // Serve uploaded food images safely
   app.use('/uploads', express.static(UPLOADS_DIR));
@@ -1185,7 +1193,8 @@ async function startServer() {
     res.json({ order });
   });
 
-  // --- Frontend Serving (Vite dev middleware or built dist/) ---
+// --- Frontend Serving (Vite dev middleware or built dist/) ---
+async function startLocalServer() {
   const isProd = process.env.NODE_ENV === 'production' && fs.existsSync(path.resolve(__dirname, 'dist', 'index.html'));
   if (isProd) {
     const distPath = path.resolve(__dirname, 'dist');
@@ -1207,7 +1216,12 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start Campus Bites server:', err);
-  process.exit(1);
-});
+if (!process.env.VERCEL) {
+  startLocalServer().catch((err) => {
+    console.error('Failed to start Campus Bites server:', err);
+    process.exit(1);
+  });
+}
+
+export { app };
+export default app;
